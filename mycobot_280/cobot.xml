@@ -1,0 +1,121 @@
+<mujoco model="cobot">
+    <compiler angle="radian" meshdir="assets" autolimits="true"/>
+    <option integrator="implicitfast"/>
+
+    <default>
+        <default class="cobot">
+        <default class="visual">
+            <geom type="mesh" contype="1" conaffinity="2" group="2"/>
+        </default>
+        <default class="collision">
+            <geom type="capsule" group="3"/>
+            <default class="eef_collision">
+            <geom type="cylinder"/>
+            </default>
+        </default>
+        <joint axis="0 1 0" range="-2.8798 2.8798"/>
+        <default class="joint_limited">
+            <joint range="-3.1415 3.1415"/>
+        </default>
+                <default class="position">
+            <position ctrlrange="-2.8798 2.8798" kp="100" kv="5" forcerange="-3 3"/>
+            <default class="position_limited">
+                <position ctrlrange="-2.8798 2.8798" forcerange="-2 2"/>
+            </default>
+            <default class="position_small">
+                <position kp="40" kv="2" forcerange="-1 1"/>
+            </default>
+        </default>
+        </default>
+    </default>
+
+    <asset>
+        <mesh name="joint1_jet" file="joint1_jet.stl" />
+        <mesh name="joint2" file="joint2.stl" />
+        <mesh name="joint3" file="joint3.stl" />
+        <mesh name="joint4" file="joint4.stl" />
+        <mesh name="joint5" file="joint5.stl" />
+        <mesh name="joint6" file="joint6.stl" />
+        <mesh name="joint7" file="joint7.stl" />
+        <mesh name="m1" file="m1_dec.stl" />
+    </asset>
+
+    <worldbody>
+        <geom quat="0.000796327 0 0 1" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint1_jet" />
+        <body name="shoulder_link" pos="0 0 0.15756">
+            <inertial pos="-4.46252e-07 -0.0048982 -0.0203936" quat="0.988685 0.150004 1.75753e-05 -6.19332e-05" mass="0.153266" diaginertia="0.00010997 0.000104609 4.89092e-05" />
+            <joint name="shoulder_pan" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8798 2.8798" />
+            <geom pos="0 0 -0.06096" quat="0.707105 0 0 -0.707108" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint2" />
+            <body name="upper_arm_link" pos="0 0 -0.001" quat="0.499998 0.500002 0.5 -0.5">
+                <inertial pos="-0.0548658 -3.79418e-06 0.0581352" quat="0.50338 0.49662 0.497294 0.502669" mass="0.4" diaginertia="0.000569683 0.000554829 8.82752e-05" />
+                <joint name="shoulder_lift" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8798 2.8798" />
+                <geom pos="0 0 0.03256" quat="0.707105 0 -0.707108 0" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint3" />
+                <body name="forearm_link" pos="-0.1104 0 0">
+                    <inertial pos="-0.0454441 4.51021e-07 0.00478273" quat="0.508392 0.491471 0.491339 0.508508" mass="0.219069" diaginertia="0.000359328 0.000340078 6.35956e-05" />
+                    <joint name="elbow" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8798 2.8798" />
+                    <geom pos="0 0 0.03056" quat="0.707105 0 -0.707108 0" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint4" />
+                    <body name="wrist_1_link" pos="-0.096 0 0.06462" quat="0.707105 0 0 -0.707108">
+                        <inertial pos="1.49997e-05 -0.00761485 -0.00688111" quat="0.903244 0.429125 -0.00118023 0.00112811" mass="0.0576212" diaginertia="1.88765e-05 1.81573e-05 1.0565e-05" />
+                        <joint name="wrist_1" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8798 2.8798" />
+                        <geom pos="0 0 -0.03356" quat="0.707105 -0.707108 0 0" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint5" />
+                        <body name="wrist_2_link" pos="0 -0.07318 0" quat="0.499998 0.5 -0.5 0.500002">
+                            <inertial pos="-3.34552e-08 0.00487808 -0.00751659" quat="0.395895 0.918296 6.92557e-06 2.44425e-06" mass="0.0904837" diaginertia="4.06947e-05 3.23387e-05 2.57661e-05" />
+                            <joint name="wrist_2" pos="0 0 0" axis="0 0 1" limited="true" range="-2.8798 2.8798" />
+                            <geom pos="0 0 -0.038" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint6" />
+                            <body name="wrist_3_link" pos="0 0.0456 0" quat="0.707105 -0.707108 0 0">
+                                <inertial pos="-6.68861e-07 -1.54403e-07 -0.00514555" quat="0.276336 0.650875 -0.27633 0.650877" mass="0.0121397" diaginertia="1.94827e-06 1.13494e-06 1.13491e-06" />
+                                <joint name="wrist_3" pos="0 0 0" axis="0 0 1" limited="true" range="-3.1241 3.1241" />
+                                <geom pos="0 0 -0.012" type="mesh" contype="1" conaffinity="2" group="1" mesh="joint7" />
+
+                                <!-- Sensor head mounted on flange -->
+                                <geom name="m1" type="mesh" mesh="m1"
+                                    contype="1" conaffinity="2" group="1"
+                                    pos="0.0 0 0.02" quat="0.7071 0 0 -0.7071"
+                                    mass="0.037"/>
+
+                                <!-- End-effector site (IK target frame) -->
+                                <site name="attachment_site" size="0.005" pos="0.0 0 0.02" rgba="1 0 0 1" group="1"/>
+
+                                <!-- Camera attached to end effector -->
+                                <camera name="wrist_cam" mode="fixed"
+                                    pos="0.017 0 0.02" quat="0.5 0.5 -0.5 -0.5"
+                                    focal="0.001 0.001"
+                                    sensorsize="0.005219 0.003262"
+                                    resolution="1920 1200"/>
+
+                                <!-- IMU site -->
+                                <site name="imu_site" size="0.003" pos="0 0 0.003" rgba="0 1 0 1" group="1"/>
+                            </body>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </worldbody>
+
+    <actuator>
+        <position class="position" name="shoulder_pan" joint="shoulder_pan"/>
+        <position class="position" name="shoulder_lift" joint="shoulder_lift"/>
+        <position class="position_limited" name="elbow" joint="elbow"/>
+        <position class="position_small" name="wrist_1" joint="wrist_1"/>
+        <position class="position_small" name="wrist_2" joint="wrist_2"/>
+        <position class="position_small" name="wrist_3" joint="wrist_3"/>
+    </actuator>
+
+    <sensor>
+        <accelerometer name="imu_acc"  site="imu_site" noise="0.01"/>
+        <gyro          name="imu_gyro" site="imu_site" noise="0.001"/>
+
+        <framequat     name="ee_quat" objtype="site" objname="attachment_site"/>
+        <framepos      name="ee_pos"  objtype="site" objname="attachment_site"/>
+    </sensor>
+
+    <keyframe>
+        <key name="home"
+            qpos="0 0 0 0 0 0"
+            ctrl="0 0 0 0 0 0"/>
+        <key name="calibrate"
+            qpos="0 0 -1.57 0 0 -1.2"
+            ctrl="0 0 -1.57 0 0 0"/>
+    </keyframe>
+</mujoco>
