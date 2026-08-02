@@ -1,61 +1,11 @@
+import argparse
 import mujoco
 import mujoco.viewer
 import numpy as np
 import time
-import multiprocessing as mp
-from collections import deque
 
-def plot_process(q: mp.Queue):
-    import matplotlib
-    matplotlib.use("QtAgg")
-    import matplotlib.pyplot as plt
-    import queue as queue_mod
-
-    n = 2000  # samples shown
-    t_buf = deque(maxlen=n)
-    bufs = [deque(maxlen=n) for _ in range(6)]
-    labels = ["gx", "gy", "gz", "ax", "ay", "az"]
-
-    plt.ion()
-    fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(8, 6))
-    lines = []
-    for i in range(3):
-        lines.append(ax1.plot([], [], label=labels[i])[0])
-    for i in range(3, 6):
-        lines.append(ax2.plot([], [], label=labels[i])[0])
-    ax1.set_ylabel("gyro [rad/s]"); ax1.legend(loc="upper right")
-    ax2.set_ylabel("accel [m/s²]"); ax2.set_xlabel("time [s]"); ax2.legend(loc="upper right")
-
-    plt.show(block=False)
-    fig.canvas.draw()
-    fig.canvas.flush_events()
-
-    while True:
-        # Drain everything queued since the last redraw.
-        drained = False
-        try:
-            while True:
-                # Block briefly for the first item, then grab the rest non-blocking.
-                item = q.get(block=not drained, timeout=0.03)
-                if item is None:
-                    return
-                t, vals = item
-                t_buf.append(t)
-                for i in range(6):
-                    bufs[i].append(vals[i])
-                drained = True
-        except queue_mod.Empty:
-            pass
-
-        if drained:
-            for i, ln in enumerate(lines):
-                ln.set_data(t_buf, bufs[i])
-            ax1.relim(); ax1.autoscale_view()
-            ax2.relim(); ax2.autoscale_view()
-
-        fig.canvas.draw_idle()
-        fig.canvas.flush_events()
-        plt.pause(0.03)
+from constants import *
+from motions import trefoil
 
 # https://mathcurve.com/courbes3d.gb/noeuds/noeudenhuit.shtml
 
@@ -67,76 +17,67 @@ integration_dt: float = 1.0
 # becoming too large when the Jacobian is close to singular.
 damping: float = 1e-4
 
-# Whether to enable gravity compensation.
-gravity_compensation: bool = True
-
 # Simulation timestep in seconds.
-dt: float = 1.0 / 840.0     # matches the IMU frequency
+dt: float = 1.0 / 840.0  # matches the IMU frequency
 
 # Maximum allowable joint velocity in rad/s. Set to 0 to disable.
 max_angvel = 0.0
 
 
-def main() -> None:
-    assert mujoco.__version__ >= "3.1.0", "Please upgrade to mujoco 3.1.0 or later."
-
-    import sys
-    import os
-    if sys.platform == "darwin":
-        mp.set_start_method("spawn", force=True)
-        mp.set_executable(os.path.join(sys.prefix, "bin", "python3"))
-
-    queue = mp.Queue()
-    proc = mp.Process(target=plot_process, args=(queue,), daemon=True)
-    proc.start()
-
-    # Load the model and data.
-    #model = mujoco.MjModel.from_xml_path("universal_robots_ur5e/scene.xml")
-    model = mujoco.MjModel.from_xml_path("mycobot_280/scene.xml")
+def setup_model(
+    fp: str, dt: float = 1.0 / 840.0, gravity_compensation: bool = True
+) -> tuple[mujoco.MjModel, mujoco.MjData]:
+    model = mujoco.MjModel.from_xml_path(fp)
     data = mujoco.MjData(model)
-
-    # Override the simulation timestep.
-    model.opt.timestep = dt
-
-    # End-effector site we wish to control, in this case a site attached to the last
-    # link (wrist_3_link) of the robot.
-    site_id = model.site("attachment_site").id
-
-    gyro_adr = model.sensor("imu_gyro").adr[0]
-    accel_adr = model.sensor("imu_acc").adr[0]
-
-    # Name of bodies we wish to apply gravity compensation to.
-    body_names = [
-        "shoulder_link",
-        "upper_arm_link",
-        "forearm_link",
-        "wrist_1_link",
-        "wrist_2_link",
-        "wrist_3_link",
-    ]
-    body_ids = [model.body(name).id for name in body_names]
+    model.opt.timestep = dt  # sim timestep = IMU frequency.
+    body_ids = [model.body(name).id for name in BODY_NAMES]
     if gravity_compensation:
         model.body_gravcomp[body_ids] = 1.0
+    return model, data
 
-    # Get the dof and actuator ids for the joints we wish to control.
-    joint_names = [
-        "shoulder_pan",
-        "shoulder_lift",
-        "elbow",
-        "wrist_1",
-        "wrist_2",
-        "wrist_3",
-    ]
-    dof_ids = np.array([model.joint(name).id for name in joint_names])
-    # Note that actuator names are the same as joint names in this case.
-    actuator_ids = np.array([model.actuator(name).id for name in joint_names])
+
+def camera_calibrate():
+    pass
+
+
+def zero_bias(model, t: float, disable_t: float = 10.0, transition_t: float = 1.0):
+    if t < transition_t:
+        return model.key("zero_bias").ctrl
+    elif t < disable_t + transition_t:
+        model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_ACTUATION)
+        return model.key("zero_bias").ctrl
+    else:
+        model.opt.disableflags &= ~int(mujoco.mjtDisableBit.mjDSBL_ACTUATION)
+        return model.key("home").ctrl
+
+
+def ellipsoid_fit():
+    pass
+
+
+def main() -> None:
+    # load simulated model of cobot and initialize data
+    fp = "./mycobot_280/scene.xml"
+    model, data = setup_model(fp)
+
+    # get id of the end effector we want to control
+    ee_id = model.site(END_EFFECTOR_NAME).id
+
+    # grab the accelerometer and gyroscope
+    gyro_adr = model.sensor(GYRO_NAME).adr[0]
+    accel_adr = model.sensor(ACCEL_NAME).adr[0]
+
+    # get all ids for DOFs that we control
+    dof_ids = np.array([model.joint(name).id for name in JOINT_NAMES])
+    # get all ids for actuators that we control (same as DOFs)
+    actuator_ids = np.array([model.actuator(name).id for name in JOINT_NAMES])
 
     # Initial joint configuration saved as a keyframe in the XML file.
-    key_id = model.key("calibrate").id
+    key_id = model.key("home").id
 
     # Mocap body we will control with our mouse.
     mocap_id = model.body("target").mocapid[0]
-    tag_site_id = model.site("tag_down_right").id
+    tag_ee_id = model.site("tag_down_right").id
 
     # Pre-allocate numpy arrays.
     jac = np.zeros((6, model.nv))
@@ -148,21 +89,6 @@ def main() -> None:
     site_quat_conj = np.zeros(4)
     error_quat = np.zeros(4)
 
-    # Define a trajectory for the end-effector site to follow.
-    def circle(t: float, r: float, h: float, k: float, f: float) -> np.ndarray:
-        """Return the (x, y) coordinates of a circle with radius r centered at (h, k)
-        as a function of time t and frequency f."""
-        x = r * np.cos(2 * np.pi * f * t) + h
-        y = r * np.sin(2 * np.pi * f * t) + k
-        z = 0.2
-        return np.array([x, y, z])
-
-    def trefoil(t: float, r: float, h: float, k: float, f: float) -> np.ndarray:
-        x = r * np.cos(2 * np.pi * f * t) + 2 * r * np.cos(4 * np.pi * f * t) + h
-        y = 5 * r * np.sin(2 * np.pi * f * t) - 5 * 2 * r * np.sin(4 * np.pi * f * t) + k
-        z = 2 * 2 * r * np.sin(3 * np.pi * f * t) + 0.15
-        return np.array([x, y, z])
-
     def lookat_quat(eye, target, axis="z", up=np.array([0.0, 0.0, -1.0])):
         """Quaternion that points the site's given local axis from eye toward target.
         axis: 'x', 'y', 'z', '-x', '-y', '-z'"""
@@ -173,12 +99,13 @@ def main() -> None:
         if abs(np.dot(gaze, up)) > 0.99:
             up = np.array([0.0, 1.0, 0.0])
 
-        a = np.cross(up, gaze); a /= np.linalg.norm(a)
+        a = np.cross(up, gaze)
+        a /= np.linalg.norm(a)
         b = np.cross(gaze, a)
 
         ax = axis[-1]
         if ax == "z":
-            cols = [a, b, gaze]        # x, y, z columns
+            cols = [a, b, gaze]  # x, y, z columns
         elif ax == "x":
             cols = [gaze, a, b]
         else:  # 'y'
@@ -207,31 +134,29 @@ def main() -> None:
         viewer.opt.sitegroup[1] = 0
         viewer.opt.sitegroup[2] = 0
 
+        global_time = time.time()
         while viewer.is_running():
             step_start = time.time()
 
             # Set the target position of the end-effector site.
-            #data.mocap_pos[mocap_id] = circle(data.time, 0.1, 0.5, 0.0, 0.5)
-            #data.mocap_pos[mocap_id] = trefoil(data.time, 0.075, 0.4, 0.0, 0.2)
-            data.mocap_pos[mocap_id] = trefoil(data.time, 0.01,  0.2, 0.0, 0.2)
-            #data.mocap_pos[mocap_id] = circle(data.time, 0.03,  0.15, 0.0, 0.2)
+            data.mocap_pos[mocap_id] = trefoil(data.time)
             data.mocap_quat[mocap_id] = lookat_quat(
                 data.mocap_pos[mocap_id],
-                data.site(tag_site_id).xpos,
+                data.site(tag_ee_id).xpos,
                 axis="x",
-            )   
+            )
 
             # Position error.
-            error_pos[:] = data.mocap_pos[mocap_id] - data.site(site_id).xpos
+            error_pos[:] = data.mocap_pos[mocap_id] - data.site(ee_id).xpos
 
             # Orientation error.
-            mujoco.mju_mat2Quat(site_quat, data.site(site_id).xmat)
+            mujoco.mju_mat2Quat(site_quat, data.site(ee_id).xmat)
             mujoco.mju_negQuat(site_quat_conj, site_quat)
             mujoco.mju_mulQuat(error_quat, data.mocap_quat[mocap_id], site_quat_conj)
             mujoco.mju_quat2Vel(error_ori, error_quat, 1.0)
 
             # Get the Jacobian with respect to the end-effector site.
-            mujoco.mj_jacSite(model, data, jac[:3], jac[3:], site_id)
+            mujoco.mj_jacSite(model, data, jac[:3], jac[3:], ee_id)
 
             # Solve system of equations: J @ dq = error.
             dq = jac.T @ np.linalg.solve(jac @ jac.T + diag, error)
@@ -248,27 +173,29 @@ def main() -> None:
 
             # Set the control signal.
             np.clip(q, *model.jnt_range.T, out=q)
-            data.ctrl[actuator_ids] = q[dof_ids]
+            reference_time = time.time() - global_time
+            data.ctrl[actuator_ids] = q[
+                actuator_ids
+            ]  # zero_bias(model, reference_time)
 
             # Step the simulation.
             mujoco.mj_step(model, data)
 
             # in the loop, after mj_step:
-            gyro = data.sensordata[gyro_adr:gyro_adr + 3]
-            accel = data.sensordata[accel_adr:accel_adr + 3]
+            gyro = data.sensordata[gyro_adr : gyro_adr + 3]
+            accel = data.sensordata[accel_adr : accel_adr + 3]
 
-            imu = np.concatenate([
-                gyro,
-                accel,
-            ])
-            queue.put_nowait((data.time, imu))
+            imu = np.concatenate(
+                [
+                    gyro,
+                    accel,
+                ]
+            )
 
             viewer.sync()
             time_until_next_step = dt - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
-        
-        queue.put(None)
 
 
 if __name__ == "__main__":
