@@ -115,7 +115,10 @@
             qpos="0 0 0 0 0 0"
             ctrl="0 0 0 0 0 0"/>
         <key name="calibrate"
-            qpos="0 0 -1.57 0 0 -1.2"
+            qpos="0 0 -1.57 0 0 0"
             ctrl="0 0 -1.57 0 0 0"/>
+        <key name="zero_bias"
+            qpos="0 -1.45 -1.57 1.45 -1.57 0"
+            ctrl="0 -1.45 -1.57 1.45 -1.57 0"/>
     </keyframe>
 </mujoco>
